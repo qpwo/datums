@@ -66,70 +66,77 @@ class Datum_<T> implements Datum<T> {
 }
 
 class Compose_<Ds extends Record<string, RODatum<any>>, Out> {
-    private listeners: (ChangeListener<Out> | undefined)[] = []
-    private destroyed = false
-    private onDestroy: Unsubscribe[] = []
-    private val: Out
+    #listeners: (ChangeListener<Out> | undefined)[] = []
+    #destroyed = false
+    #onDestroy: Unsubscribe[] = []
+    #val: Out
+    #compute: (vals: { [K in keyof Ds]: Ds[K]['get'] }) => Out
+    #cursors: Ds
 
     constructor(
-        private compute: (vals: { [K in keyof Ds]: Ds[K]['get'] }) => Out,
-        private cursors: Ds
+        compute: (vals: { [K in keyof Ds]: Ds[K]['get'] }) => Out,
+        cursors: Ds
     ) {
+        this.#compute = compute
+        this.#cursors = cursors
         for (const k in cursors) {
-            this.onDestroy.push(cursors[k].onChange(() => this.handleUpdate()))
+            this.#onDestroy.push(
+                cursors[k].onChange(() => this.#handleUpdate())
+            )
         }
-        this.val = this.compute(this.getAll())
+        this.#val = this.#compute(this.#getAll())
     }
 
     get(): Out {
-        if (this.val === null) {
-            this.val = this.compute(this.getAll())
+        if (this.#val === null) {
+            this.#val = this.#compute(this.#getAll())
         }
-        return this.val
+        return this.#val
     }
 
-    onChange(cb: ChangeListener<Out>): Unsubscribe {
-        if (this.destroyed)
+    onChange(cb: ChangeListener<Out>, runImmediately: boolean): Unsubscribe {
+        if (this.#destroyed)
             throw Error('Cannot listen to destroyed Composed datum')
         let i = 0
         while (true) {
-            if (this.listeners[i] === undefined) {
-                this.listeners[i] = cb
-                return () => (this.listeners[i] = undefined)
+            if (this.#listeners[i] === undefined) {
+                this.#listeners[i] = cb
+                if (runImmediately) cb(this.#val, this.#val, () => {})
+                return () => (this.#listeners[i] = undefined)
             }
             i++
         }
     }
 
     destroy() {
-        for (const unsub of this.onDestroy) {
+        for (const unsub of this.#onDestroy) {
             unsub()
         }
-        this.listeners.length = 0
-        this.onDestroy.length = 0
-        this.destroyed = true
+        this.#listeners.length = 0
+        this.#onDestroy.length = 0
+        this.#destroyed = true
     }
 
-    private handleUpdate() {
-        const oldVal = this.val
-        this.val = this.compute(this.getAll())
-        if (deepEquals(this.val, oldVal)) return
-        for (let i = 0; i < this.listeners.length; i++) {
-            const listener = this.listeners[i]
+    #handleUpdate() {
+        const oldVal = this.#val
+        this.#val = this.#compute(this.#getAll())
+        if (deepEquals(this.#val, oldVal)) return
+        for (let i = 0; i < this.#listeners.length; i++) {
+            const listener = this.#listeners[i]
             if (listener) {
                 listener(
-                    this.val,
+                    this.#val,
                     oldVal,
-                    () => (this.listeners[i] = undefined)
+                    () => (this.#listeners[i] = undefined)
                 )
             }
         }
     }
 
-    private getAll() {
+    #getAll() {
         const o: any = {}
-        for (const k in this.cursors) {
-            o[k] = this.cursors[k].get()
+        for (const k in this.#cursors) {
+            o[k] = this.#cursors[k].get()
         }
 
         return o as { [K in keyof Ds]: Ds[K]['get'] }
