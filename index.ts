@@ -6,12 +6,12 @@ export interface Datum<T = unknown> {
     get(): T
     set(newVal: T): void
     apply(update: (old: T) => T): void
-    onChange(cb: ChangeListener<T>): Unsubscribe
+    onChange(cb: ChangeListener<T>, runImmediately?: boolean): Unsubscribe
 }
 
 export interface RODatum<T> {
     get(): T
-    onChange(cb: ChangeListener<T>): Unsubscribe
+    onChange(cb: ChangeListener<T>, runImmediately?: boolean): Unsubscribe
 }
 
 export function datum<T = unknown>(initial: T): Datum<T> {
@@ -19,7 +19,7 @@ export function datum<T = unknown>(initial: T): Datum<T> {
 }
 
 export function toReadonly<T>(d: Datum<T>): RODatum<T> {
-    return { onChange: cb => d.onChange(cb), get: () => d.get() }
+    return { onChange: (...args) => d.onChange(...args), get: () => d.get() }
 }
 
 export function compose<Ds extends Record<string, RODatum<any>>, Out>(
@@ -52,11 +52,12 @@ class Datum_<T> implements Datum<T> {
         const newVal = update(this.#val)
         this.set(newVal)
     }
-    onChange(cb: ChangeListener<T>): Unsubscribe {
+    onChange(cb: ChangeListener<T>, runImmediately?: boolean): Unsubscribe {
         let i = 0
         while (true) {
             if (this.#listeners[i] === undefined) {
                 this.#listeners[i] = cb
+                if (runImmediately) cb(this.#val, this.#val, () => {})
                 return () => (this.#listeners[i] = undefined)
             }
             i++
