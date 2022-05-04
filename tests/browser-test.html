@@ -1,0 +1,17 @@
+<html>
+
+<body>
+    <script type="module" src="../dist/index.mjs">
+    </script>
+    <script type="module">
+        import {
+            datum
+        } from '../dist/index.mjs'
+        const d = datum(1)
+        window.d = d
+        d.set(2)
+        console.log(d, d.get())
+    </script>
+</body>
+
+</html>

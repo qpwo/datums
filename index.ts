@@ -1,3 +1,5 @@
+import { deepEqual } from 'fast-equals'
+
 type ChangeListener<T> = (val: T, prev: T, unsub: Unsubscribe) => void
 
 type Unsubscribe = () => void
@@ -41,7 +43,7 @@ class Datum_<T> implements Datum<T> {
         return this.#val
     }
     set(newVal: T) {
-        if (deepEquals(this.#val, newVal)) return
+        if (deepEqual(this.#val, newVal)) return
         const oldVal = this.#val
         this.#val = newVal
         for (let i = 0; i < this.#listeners.length; i++) {
@@ -121,7 +123,7 @@ class Compose_<Ds extends DatumMap, Out> implements ComposedDatum<Out> {
     #handleUpdate() {
         const oldVal = this.#val
         this.#val = this.#compute(this.#getAll())
-        if (deepEquals(this.#val, oldVal)) return
+        if (deepEqual(this.#val, oldVal)) return
         for (let i = 0; i < this.#listeners.length; i++) {
             const listener = this.#listeners[i]
             if (listener) {
@@ -142,32 +144,4 @@ class Compose_<Ds extends DatumMap, Out> implements ComposedDatum<Out> {
 
         return o as { [K in keyof Ds]: Ds[K]['get'] }
     }
-}
-
-function deepEquals(a: unknown, b: unknown): boolean {
-    if (a === b || (Number.isNaN(a) && Number.isNaN(b))) return true
-
-    // prettier-ignore
-    if (typeof a !== typeof b || // different types
-        typeof a !== "object" ||
-        typeof b !== "object" || // nonequal primitives
-        (a === null || b === null) // one is null but not other
-    )
-        return false
-
-    // So a and b are both either arrays or objects
-
-    if (Array.isArray(a) !== Array.isArray(b)) return false
-    if (Array.isArray(a) && Array.isArray(b)) {
-        if (a.length !== b.length) return false
-        for (let i = 0; i < a.length; i++)
-            if (!deepEquals(a[i], b[i])) return false
-        return true
-    }
-    // both regular objects
-    for (const k in a) if (!(k in b)) return false
-    for (const k in b) if (!(k in a)) return false
-    // @ts-expect-error
-    for (const k in a) if (!deepEquals(a[k], b[k])) return false
-    return true
 }

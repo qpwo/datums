@@ -1,4 +1,4 @@
-const { datum, compose } = require('./index.js')
+const { datum, compose } = require('../dist/index.cjs')
 
 function testMemory() {
     const mem = () =>
