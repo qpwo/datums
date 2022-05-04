@@ -2,30 +2,32 @@ type ChangeListener<T> = (val: T, prev: T, unsub: Unsubscribe) => void
 
 type Unsubscribe = () => void
 
-export interface Datum<T = unknown> {
+export interface RODatum<T = unknown> {
     get(): T
-    set(newVal: T): void
-    apply(update: (old: T) => T): void
     onChange(cb: ChangeListener<T>, runImmediately?: boolean): Unsubscribe
 }
 
-export interface RODatum<T> {
-    get(): T
-    onChange(cb: ChangeListener<T>, runImmediately?: boolean): Unsubscribe
+export interface Datum<T = unknown> extends RODatum<T> {
+    set(newVal: T): void
+    apply(update: (old: T) => T): void
+}
+
+export interface ComposedDatum<T = unknown> extends RODatum<T> {
+    stopListening(): void
 }
 
 export function datum<T = unknown>(initial: T): Datum<T> {
     return new Datum_(initial)
 }
 
-export function toReadonly<T>(d: Datum<T>): RODatum<T> {
+export function toReadonly<T = unknown>(d: Datum<T>): RODatum<T> {
     return { onChange: (...args) => d.onChange(...args), get: () => d.get() }
 }
 
-export function compose<Ds extends Record<string, RODatum<any>>, Out>(
+export function compose<Ds extends DatumMap, Out = unknown>(
     compute: (vals: { [K in keyof Ds]: Ds[K]['get'] }) => Out,
     cursors: Ds
-) {
+): ComposedDatum<Out> {
     return new Compose_(compute, cursors)
 }
 
@@ -65,7 +67,9 @@ class Datum_<T> implements Datum<T> {
     }
 }
 
-class Compose_<Ds extends Record<string, RODatum<any>>, Out> {
+type DatumMap = Record<string, RODatum<any>>
+
+class Compose_<Ds extends DatumMap, Out> implements ComposedDatum<Out> {
     #listeners: (ChangeListener<Out> | undefined)[] = []
     #destroyed = false
     #onDestroy: Unsubscribe[] = []
@@ -88,9 +92,6 @@ class Compose_<Ds extends Record<string, RODatum<any>>, Out> {
     }
 
     get(): Out {
-        if (this.#val === null) {
-            this.#val = this.#compute(this.#getAll())
-        }
         return this.#val
     }
 
@@ -108,7 +109,7 @@ class Compose_<Ds extends Record<string, RODatum<any>>, Out> {
         }
     }
 
-    destroy() {
+    stopListening() {
         for (const unsub of this.#onDestroy) {
             unsub()
         }
