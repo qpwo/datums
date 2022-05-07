@@ -1,3 +1,4 @@
+const { deepStrictEqual, strictEqual, ok } = require('assert')
 const { datum, compose } = require('../dist/index.cjs')
 
 function testMemory() {
@@ -38,4 +39,48 @@ function testCompose() {
     yz.set({ y: 6, z: 6 })
 }
 
-testCompose()
+/** You can use the lastValue arg in your compute callback to make a reducer */
+function reducerPattern() {
+    const enemyId = datum(1)
+    const seenEnemies = compose(
+        ({ enemyId }, last) => (last == null ? [enemyId] : [...last, enemyId]),
+        { enemyId }
+    )
+    enemyId.set(2)
+    enemyId.set(5)
+    enemyId.set(17)
+    console.log('seen:', seenEnemies.get())
+    deepStrictEqual(seenEnemies.get(), [1, 2, 5, 17])
+}
+
+/** If you don't need onChange to fire, then you can make your reducer
+ *  memory-efficient by mutating the old value instead of creating a new one.
+ */
+function efficientReducer() {
+    const stopClock = startClock()
+    const id = datum(0)
+    const seenIds = compose(
+        ({ id }, last) => {
+            if (last == null) return [id]
+            last.push(id)
+            return last
+        },
+        { id }
+    )
+    for (let i = 0; i < 1_000_000; i++) {
+        id.set(i)
+    }
+    const elapsed = stopClock()
+    strictEqual(seenIds.get().length, 1_000_000)
+    ok(elapsed < 1_000)
+}
+
+function startClock() {
+    const start = performance.now()
+    return function stopClock() {
+        const end = performance.now()
+        return end - start
+    }
+}
+
+efficientReducer()

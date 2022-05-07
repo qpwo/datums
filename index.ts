@@ -27,7 +27,10 @@ export function toReadonly<T = unknown>(d: Datum<T>): RODatum<T> {
 }
 
 export function compose<Ds extends DatumMap, Out = unknown>(
-    compute: (vals: { [K in keyof Ds]: Ds[K]['get'] }) => Out,
+    compute: (
+        vals: { [K in keyof Ds]: Ds[K]['get'] },
+        lastOut: Out | null
+    ) => Out,
     cursors: Ds
 ): ComposedDatum<Out> {
     return new Compose_(compute, cursors)
@@ -76,11 +79,17 @@ class Compose_<Ds extends DatumMap, Out> implements ComposedDatum<Out> {
     #destroyed = false
     #onDestroy: Unsubscribe[] = []
     #val: Out
-    #compute: (vals: { [K in keyof Ds]: Ds[K]['get'] }) => Out
+    #compute: (
+        vals: { [K in keyof Ds]: Ds[K]['get'] },
+        lastOut: Out | null
+    ) => Out
     #cursors: Ds
 
     constructor(
-        compute: (vals: { [K in keyof Ds]: Ds[K]['get'] }) => Out,
+        compute: (
+            vals: { [K in keyof Ds]: Ds[K]['get'] },
+            lastOut: Out | null
+        ) => Out,
         cursors: Ds
     ) {
         this.#compute = compute
@@ -90,7 +99,7 @@ class Compose_<Ds extends DatumMap, Out> implements ComposedDatum<Out> {
                 cursors[k].onChange(() => this.#handleUpdate())
             )
         }
-        this.#val = this.#compute(this.#getAll())
+        this.#val = this.#compute(this.#getAll(), null)
     }
 
     get(): Out {
@@ -122,7 +131,7 @@ class Compose_<Ds extends DatumMap, Out> implements ComposedDatum<Out> {
 
     #handleUpdate() {
         const oldVal = this.#val
-        this.#val = this.#compute(this.#getAll())
+        this.#val = this.#compute(this.#getAll(), oldVal)
         if (deepEqual(this.#val, oldVal)) return
         for (let i = 0; i < this.#listeners.length; i++) {
             const listener = this.#listeners[i]
