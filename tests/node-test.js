@@ -1,6 +1,9 @@
 const { deepStrictEqual, strictEqual, ok } = require('assert')
 const { datum, compose } = require('../dist/index.cjs')
 
+/** Datums use very little memory and have zero background activity,
+ * so you can use millions of them in a single application.
+ */
 function testMemory() {
     const mem = () =>
         console.log('MB memory:', process.memoryUsage().heapUsed / 1024 / 1024)
@@ -28,15 +31,16 @@ function testMemory() {
     mem()
 }
 
+/** A simple example of composing datums */
 function testCompose() {
     const x = datum(1)
     const yz = datum({ y: 2, z: 3 })
     const product = compose(({ x, yz }) => x * yz.y * yz.z, { x, yz })
     product.onChange(p => console.log('product:', p))
     x.set(10)
-    yz.set({ y: 3, z: 2 })
-    yz.set({ y: 6, z: 1 })
-    yz.set({ y: 6, z: 6 })
+    yz.set({ y: 3, z: 2 }) // no change
+    yz.set({ y: 6, z: 1 }) // no change
+    yz.set({ y: 6, z: 6 }) // new product
 }
 
 /** You can use the lastValue arg in your compute callback to make a reducer */
@@ -81,6 +85,30 @@ function startClock() {
         const end = performance.now()
         return end - start
     }
+}
+
+function htmlExample() {
+    const username = datum('tom')
+    const birthday = datum(new Date('1/1/1980'))
+    const year = 365 * 24 * 60 * 60 * 1000
+    const welcome = compose(
+        data => `
+            <div>
+                <h1>Welcome ${data.username}!</h1>
+                <p>You are ${
+                    ((Date.now() - data.birthday) / year) | 0
+                } years old.</p>
+            </div>
+        `,
+        { username, birthday }
+    )
+    return welcome
+}
+
+function htmlRenderExample() {
+    const container = document.getElementById('container')
+    const welcome = htmlExample()
+    welcome.onChange(html => (container.innerHTML = html))
 }
 
 efficientReducer()
