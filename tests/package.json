@@ -1,0 +1,13 @@
+{
+    "scripts": {
+        "test": "node esm.mjs && node cjs.js && esr full.ts && echo 'http://localhost:8000' && python3 -m http.server"
+    },
+    "dependencies": {
+        "datums": "link:.."
+    },
+    "devDependencies": {
+        "@types/node": "^17.0.31",
+        "esbuild": "^0.14.38",
+        "esbuild-runner": "^2.2.1"
+    }
+}

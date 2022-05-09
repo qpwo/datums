@@ -26,9 +26,9 @@ export function toReadonly<T = unknown>(d: Datum<T>): RODatum<T> {
     return { onChange: (...args) => d.onChange(...args), get: () => d.get() }
 }
 
-export function compose<Ds extends DatumMap, Out = unknown>(
+export function compose<Out, Ds extends DatumMap>(
     compute: (
-        vals: { [K in keyof Ds]: Ds[K]['get'] },
+        vals: { [K in keyof Ds]: ReturnType<Ds[K]['get']> },
         lastOut: Out | null
     ) => Out,
     cursors: Ds
@@ -80,14 +80,14 @@ class Compose_<Ds extends DatumMap, Out> implements ComposedDatum<Out> {
     #onDestroy: Unsubscribe[] = []
     #val: Out
     #compute: (
-        vals: { [K in keyof Ds]: Ds[K]['get'] },
+        vals: { [K in keyof Ds]: ReturnType<Ds[K]['get']> },
         lastOut: Out | null
     ) => Out
     #cursors: Ds
 
     constructor(
         compute: (
-            vals: { [K in keyof Ds]: Ds[K]['get'] },
+            vals: { [K in keyof Ds]: ReturnType<Ds[K]['get']> },
             lastOut: Out | null
         ) => Out,
         cursors: Ds
@@ -151,6 +151,6 @@ class Compose_<Ds extends DatumMap, Out> implements ComposedDatum<Out> {
             o[k] = this.#cursors[k].get()
         }
 
-        return o as { [K in keyof Ds]: Ds[K]['get'] }
+        return o as { [K in keyof Ds]: ReturnType<Ds[K]['get']> }
     }
 }

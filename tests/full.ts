@@ -1,16 +1,15 @@
-const { deepStrictEqual, strictEqual, ok } = require('assert')
-const { datum, compose } = require('../dist/index.cjs')
+import { deepStrictEqual, strictEqual, ok } from 'assert'
+import { datum, compose } from '../index'
+import { performance } from 'perf_hooks'
+
+const tests: (() => void)[] = []
 
 /** Datums use very little memory and have zero background activity,
  * so you can use millions of them in a single application.
  */
 function testMemory() {
-    const mem = () =>
-        console.log('MB memory:', process.memoryUsage().heapUsed / 1024 / 1024)
-
-    mem()
-
-    class C {
+    class Dummy {
+        x: number
         constructor() {
             this.x = Math.random()
         }
@@ -18,18 +17,16 @@ function testMemory() {
             return this.x
         }
     }
-
-    const arr = []
-    const start = performance.now()
-    for (let i = 0; i < 1_000_000; i++) {
-        // arr.push(datum(0))
-        arr.push(new C())
-    }
-    const end = performance.now()
-    console.log('elapsed:', ((end - start) | 0) / 1000)
-
-    mem()
+    const mem0 = getMemoryMb()
+    const dummies = Array.from({ length: 1_000_000 }, () => new Dummy())
+    const mem1 = getMemoryMb()
+    const datums = Array.from({ length: 1_000_000 }, () => datum(Math.random()))
+    const mem2 = getMemoryMb()
+    const dummyMemory = mem1 - mem0
+    const datumMemory = mem2 - mem1
+    ok(datumMemory < dummyMemory * 4)
 }
+tests.push(testMemory)
 
 /** A simple example of composing datums */
 function testCompose() {
@@ -47,7 +44,8 @@ function testCompose() {
 function reducerPattern() {
     const enemyId = datum(1)
     const seenEnemies = compose(
-        ({ enemyId }, last) => (last == null ? [enemyId] : [...last, enemyId]),
+        ({ enemyId }, last: number[] | null) =>
+            last == null ? [enemyId] : [...last, enemyId],
         { enemyId }
     )
     enemyId.set(2)
@@ -64,7 +62,7 @@ function efficientReducer() {
     const stopClock = startClock()
     const id = datum(0)
     const seenIds = compose(
-        ({ id }, last) => {
+        ({ id }, last: number[] | null) => {
             if (last == null) return [id]
             last.push(id)
             return last
@@ -96,7 +94,7 @@ function htmlExample() {
             <div>
                 <h1>Welcome ${data.username}!</h1>
                 <p>You are ${
-                    ((Date.now() - data.birthday) / year) | 0
+                    ((Date.now() - data.birthday.getTime()) / year) | 0
                 } years old.</p>
             </div>
         `,
@@ -106,9 +104,16 @@ function htmlExample() {
 }
 
 function htmlRenderExample() {
+    const document: any = null // remove for browser
     const container = document.getElementById('container')
     const welcome = htmlExample()
     welcome.onChange(html => (container.innerHTML = html))
 }
 
 efficientReducer()
+
+// ===== UTILITIES =====
+
+function getMemoryMb(): any {
+    return process.memoryUsage().heapUsed / 1024 / 1024
+}
