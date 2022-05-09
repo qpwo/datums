@@ -7,6 +7,8 @@
         "esbuild-runner": "^2.2.1"
     },
     "dependencies": {
-        "datums": "link:.."
+        "baobab": "^2.6.1",
+        "datums": "link:..",
+        "redux": "^4.2.0"
     }
 }

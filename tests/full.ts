@@ -216,7 +216,7 @@ function frequentUnsub() {
 
 // ===== UTILITIES =====
 
-function getMemoryMb(): any {
+function getMemoryMb() {
     return process.memoryUsage().heapUsed / 1024 / 1024
 }
 
