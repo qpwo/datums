@@ -1,11 +1,11 @@
+/** Instant and composable reactive data */
+
 import { deepEqual, shallowEqual } from 'fast-equals'
 
 type ChangeListener<T> = (val: T, prev: T, unsub: Unsubscribe) => void
-
 type Unsubscribe = () => void
-
-/** A Datum, ComposedDatum, or RODatum */
-export interface AnyDatum<T> {
+/** Any readable datum (Datum, ComposedDatum, or ReadonlyDatum) */
+export interface RODatum<T> {
     onChange(cb: ChangeListener<T>, runImmediately?: boolean): Unsubscribe
     val: T
 }
@@ -14,8 +14,8 @@ export function datum<T>(initial: T): Datum<T> {
     return new Datum(initial)
 }
 
-export function toReadonly<T>(d: AnyDatum<T>): RODatum<T> {
-    return new RODatum(d)
+export function toReadonly<T>(d: RODatum<T>): RODatum<T> {
+    return new ReadonlyDatum(d)
 }
 
 export function compose<Out, Ds extends DatumMap>(
@@ -25,8 +25,26 @@ export function compose<Out, Ds extends DatumMap>(
     return new Composed(compute, cursors)
 }
 
+export function datums<T extends any[]>(
+    ...args: T
+): { [K in keyof T]: Datum<T[K]> } {
+    // @ts-expect-error
+    return args.map(x => new Datum(x))
+}
+
+export function setMany<T extends any[]>(
+    ...pairs: { [K in keyof T]: [Datum<T[K]>, T[K]] }
+): void {
+    // @ts-expect-error
+    for (const [d, v] of pairs) d._setLater(v)
+    // @ts-expect-error
+    for (const [d] of pairs) d._flush()
+}
+
+export type { Datum, Composed }
+
 const UNSET = Symbol('UNSET')
-class Datum<T> implements AnyDatum<T> {
+class Datum<T> implements RODatum<T> {
     #val: T
     #listeners: (ChangeListener<T> | undefined)[] = []
     /** just for _setLater() and _flush() */
@@ -70,10 +88,9 @@ class Datum<T> implements AnyDatum<T> {
     }
 }
 
-type DatumMap = Record<string, AnyDatum<any>>
+type DatumMap = Record<string, RODatum<any>>
 type ValsOf<Ds extends DatumMap> = { [K in keyof Ds]: Ds[K]['val'] }
-
-class Composed<Out, Ds extends DatumMap> implements AnyDatum<Out> {
+class Composed<Out, Ds extends DatumMap> implements RODatum<Out> {
     #listeners: (ChangeListener<Out> | undefined)[] = []
     #destroyed = false
     #onDestroy: Unsubscribe[] = []
@@ -136,9 +153,9 @@ class Composed<Out, Ds extends DatumMap> implements AnyDatum<Out> {
     }
 }
 
-class RODatum<T> implements AnyDatum<T> {
-    #datum: AnyDatum<T>
-    constructor(datum: AnyDatum<T>) {
+class ReadonlyDatum<T> implements RODatum<T> {
+    #datum: RODatum<T>
+    constructor(datum: RODatum<T>) {
         this.#datum = datum
     }
     onChange(cb: ChangeListener<T>, runImmediately?: boolean): Unsubscribe {
@@ -147,26 +164,6 @@ class RODatum<T> implements AnyDatum<T> {
     get val(): T {
         return this.#datum.val
     }
-}
-
-export type { Datum, Composed, RODatum }
-
-export function datums<T extends any[]>(
-    ...args: T
-): { [K in keyof T]: Datum<T[K]> } {
-    // @ts-expect-error
-    return args.map(x => new Datum(x))
-}
-
-type PairsFor<Vals> = {
-    [K in keyof Vals]: [Datum<Vals[K]>, Vals[K]]
-}
-
-export function setMany<T extends any[]>(...pairs: PairsFor<T>): void {
-    // @ts-expect-error
-    for (const [d, v] of pairs) d._setLater(v)
-    // @ts-expect-error
-    for (const [d] of pairs) d._flush()
 }
 
 function insertListener<T>(
