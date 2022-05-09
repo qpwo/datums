@@ -8,6 +8,9 @@ npm i datums
 
 **Basic API**: Make a datum with `datum(value)`. It has `.val`, `.set`, and `.onChange`. Compose datums with `compose(compute, datums)` to get a reactive computation. A computed value can be html, an image, a number, a reducer, etc. It's a very expressive & efficient pattern.
 
+
+![memory](https://user-images.githubusercontent.com/10591373/167476373-1e3e0ec2-7a86-4299-93fe-7498a507e5bb.png)
+
 ## Example
 
 ```ts
