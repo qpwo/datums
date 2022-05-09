@@ -1,8 +1,6 @@
 import { deepStrictEqual, strictEqual, ok } from 'assert'
-import { datum, compose } from '../index'
+import { datum, compose, toReadonly } from 'datums'
 import { performance } from 'perf_hooks'
-
-const tests: (() => void)[] = []
 
 /** Datums use very little memory and have zero background activity,
  * so you can use millions of them in a single application.
@@ -26,7 +24,6 @@ function testMemory() {
     const datumMemory = mem2 - mem1
     ok(datumMemory < dummyMemory * 4)
 }
-tests.push(testMemory)
 
 /** A simple example of composing datums */
 function testCompose() {
@@ -77,14 +74,6 @@ function efficientReducer() {
     ok(elapsed < 1_000)
 }
 
-function startClock() {
-    const start = performance.now()
-    return function stopClock() {
-        const end = performance.now()
-        return end - start
-    }
-}
-
 function htmlExample() {
     const username = datum('tom')
     const birthday = datum(new Date('1/1/1980'))
@@ -110,10 +99,49 @@ function htmlRenderExample() {
     welcome.onChange(html => (container.innerHTML = html))
 }
 
-efficientReducer()
+function classNamesArePreserved() {
+    const d = datum(1)
+    const c = compose(({ d }) => d * 2, { d })
+    const r = toReadonly(d)
+    strictEqual(d.constructor.name, 'Datum')
+    strictEqual(c.constructor.name, 'Composed')
+    strictEqual(r.constructor.name, 'ROeDatum')
+}
 
 // ===== UTILITIES =====
 
 function getMemoryMb(): any {
     return process.memoryUsage().heapUsed / 1024 / 1024
 }
+
+function startClock() {
+    const start = performance.now()
+    return function stopClock() {
+        const end = performance.now()
+        return end - start
+    }
+}
+
+// ==========
+
+function main() {
+    const tests = [
+        testMemory,
+        testCompose,
+        reducerPattern,
+        efficientReducer,
+        classNamesArePreserved,
+    ]
+    for (const t of tests) {
+        console.log(`\n\nstarting test ${t.name}`)
+        try {
+            t()
+        } catch (e_) {
+            const e = e_ as Error
+            console.error(`${t.name} FAILED:`, e.message)
+            continue
+        }
+        console.log(`test ${t.name} passed`)
+    }
+}
+main()
