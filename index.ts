@@ -217,16 +217,11 @@ function insertListener<T>(
     val: T,
     runImmediately?: boolean
 ): Unsubscribe {
-    let i = 0
-    while (true) {
-        if (listeners[i] === undefined) {
-            listeners[i] = cb
-            const unsub = () => (listeners[i] = undefined)
-            if (runImmediately) cb(val, val, unsub)
-            return unsub
-        }
-        i++
-    }
+    const n = listeners.length
+    listeners.push(cb)
+    const unsub = () => (listeners[n] = undefined)
+    if (runImmediately) cb(val, val, unsub)
+    return unsub
 }
 
 function maybeNotifyListeners<T>(
@@ -235,10 +230,28 @@ function maybeNotifyListeners<T>(
     oldVal: T
 ) {
     if (deepEqual(newVal, oldVal)) return
+    let undefinedCount = 0
     for (let i = 0; i < listeners.length; i++) {
         const listener = listeners[i]
         if (listener) {
             listener(newVal, oldVal, () => (listeners[i] = undefined))
+        } else {
+            undefinedCount++
         }
+    }
+
+    // periodically remove undefined listeners for use cases where listeners are added and removed frequently
+    if (
+        listeners.length > 1000 &&
+        undefinedCount > (listeners.length * 3) / 4
+    ) {
+        let j = 0
+        for (let i = 0; i < listeners.length; i++) {
+            if (listeners[i]) {
+                listeners[j] = listeners[i]
+                j++
+            }
+        }
+        listeners.length = j
     }
 }

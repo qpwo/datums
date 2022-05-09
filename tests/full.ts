@@ -22,6 +22,7 @@ function testMemory() {
     const mem2 = getMemoryMb()
     const dummyMemory = mem1 - mem0
     const datumMemory = mem2 - mem1
+    console.log({ dummyMemory, datumMemory })
     ok(datumMemory < dummyMemory * 4)
 }
 
@@ -33,7 +34,7 @@ function testSpeed() {
     Array.from({ length: 10_000_000 }, () => datum(Math.random()))
     const datumTime = stopDatumClock()
     console.log({ baseline, datumTime })
-    ok(datumTime < baseline * 10)
+    ok(datumTime < baseline * 4)
 }
 
 /** A simple example of composing datums */
@@ -194,7 +195,23 @@ function lotsOfListeners() {
     const attachTime = attached - start
     const sendTime = sentAll - attached
     console.log({ attachTime, sendTime })
-    ok(sentAll - start < 10_000)
+    ok(sentAll - start < 2_000)
+}
+
+function frequentUnsub() {
+    const d = datum(1)
+    const stopClock = startClock()
+    const unsubStack: (() => void)[] = []
+    for (let i = 0; i < 10_000_000; i++) {
+        if (Math.random() > 0.6 && unsubStack.length > 0) {
+            unsubStack.pop()!()
+        } else {
+            unsubStack.push(d.onChange(() => {}))
+        }
+    }
+    const elapsed = stopClock()
+    console.log({ elapsed })
+    ok(elapsed < 3_000)
 }
 
 // ===== UTILITIES =====
@@ -226,6 +243,7 @@ function main() {
         testMemory,
         testSpeed,
         lotsOfListeners,
+        frequentUnsub,
     ]
     for (const t of tests) {
         console.log(`\n\nstarting test ${t.name}`)
