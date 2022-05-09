@@ -1,60 +1,137 @@
 # datums
 
-Very light reactive data. Efficient & composable. Very simple.
+Very light reactive data. Efficient & composable. Very simple. Full type checking and editor hints on all functions and methods.
 
 ```sh
 npm i datums
 ```
 
+**Basic API**: Make a datum with `datum(value)`. It has `.val`, `.set`, and `.onChange`. Compose datums with `compose(compute, datums)` to get a reactive computation. A computed value can be html, an image, a number, a reducer, etc. It's a very expressive & efficient pattern.
+
+## Example
+
 ```ts
-import { datum, compose, toReadonly, setMany } from 'datums'
+import { datum, compose, setMany, datums } from 'datums'
 
-const width = datum(100)
-width.set(150)
-width.val // 150
-const height = datum(300)
+// These things cost nothing
+const throwaway = new Array(10_000_000).fill(null).map(() => datum(0))
 
-const img = document.createElement('img')
-document.body.appendChild(img)
-
-const url = compose(
-    ({ width, height }) => `https://picsum.photos/${width}/${height}`,
-    { width, height }
-)
-url.onChange(val => (img.src = val), true) // `true` makes it fire immediately
-
-// trigger change twice:
-width.set(500)
-height.set(500)
-
-const area = compose(({ width, height }) => width * height, { width, height })
-area.onChange(() => console.log('new image area'))
-
-// above listener won't fire because product is unchanged, and url will only change once:
-setMany([width, 250], [height, 1000])
-
-// onChange gives you the old value too
-area.onChange((val, prev) => console.log(`area changed by ${prev - val}`))
-
-// compose gives you the last output too
-const areaSum = compose(({ area }, lastOut) => area + (lastOut ?? 0), { area })
-const areaHistory = compose(({ area }, lastOut) => [...(lastOut ?? []), area], {
-    area,
+const page = datum('Home')
+page.onChange(p => {
+    destroyPage()
+    renderPage(p)
 })
+page.set('About')
+const history = compose(({ page }, prev) => [...(prev ?? []), page], { page })
 
-// You get full type checking and editor completion for all methods and arguments
+const [w, h] = datums(100, 10)
+const area = compose(({ w, h }) => w * h, { w, h })
+const unsub = area.onChange(() => {
+    throw Error('Area must never change')
+})
+setMany([w, 50], [h, 20]) // area does not change
+unsub()
 
-import { expensiveComputation } from 'somewhere'
-
-const [x, y, z] = datums(5, 6, 7)
-const result = compose(vals => expensiveComputation(vals), { x, y, z })
-const text = compose(({ result }) => `the result is ${result}.`, { result })
-text.onChange(val => console.log(val))
-
-// Anything is possible.
-
-// You can make millions of these. They are extremely fast.
-
-// If you need a composed cursor to stop listening:
-result.stopListening()
+const status = datum('loading')
+const result = datum(null)
+status.onChange(s => (div.innerText = s), true) // fires immediately
+result.onChange(r => fireUpApp(r))
+fetch('example.com/data.json')
+    .then(d => {
+        status.set('parsing')
+        return d.json()
+    })
+    .then(json => {
+        status.set('done')
+        result.set(json)
+    })
 ```
+
+## Full API
+
+### function `datum(initial): Datum`
+
+A reactive piece of data. Has `set`, `val`, and `onChange`.\
+`onChange` is only triggered if `deepEquals(newVal, oldVal)` is false.
+
+```ts
+const d = datum(2)
+const unsub = d.onChange((val, prev, _unsub) =>
+    console.log(`changed from ${prev} to ${val}`)
+)
+d.set(d.val * 3)
+d.val // => 6
+unsub()
+```
+
+### function `compose(compute, cursors): Composed`
+
+Compute one or more datums into a read-only datum.\
+`onChange` is only triggered if `deepEquals(out, lastOut)` is false.
+
+```ts
+const x = datum(3)
+const y = datum(5)
+const product = compose(({ x, y }) => x * y, { x, y })
+product.val // => 15
+product.onChange(console.log)
+```
+
+### function `datums(...initialValues)`
+
+Convenience method to make multiple datums simultaneously
+
+```ts
+const [id, count, name] = datums(111, 0, 'Bob')
+count.set(count.val + 1)
+```
+
+### function `setMany(...pairs)`
+
+Set several datums and don't trigger listeners or update `.val` until the end
+
+```ts
+const [base, exp] = datums(3, 4)
+const bToE = compose(({ base, exp }) => base ** exp, { base, exp })
+bToE.onChange(console.log)
+setMany([base, 9], [exp, 2])
+// onChange is not triggered because the final result is the same.
+```
+
+### interface `RODatum<T>`
+
+Read-only datum (matches result from `datum` or `compose`).
+
+```ts
+// Can use as a parameter type for non-mutating functions.
+function Header(title: RODatum<string>) {
+    return compose(({ title }) => `<h1>${title}</h1>`, { title })
+}
+
+// Also useful for exporting a value from a module.
+const health_ = datum(100)
+export const health: RODatum<number> = health_
+// other modules will get type error if they `.set()`
+```
+
+-   `onChange(listener(val, prev, unsub), runImmediately?): Unsubscribe`
+    -   Trigger this callback whenever val changes
+-   `val: T`
+    -   Current value of datum
+
+### interface `Datum<T>`
+
+The result of `datum`, a reactive value.
+
+-   `onChange`: same as above
+-   `val`: same as above
+-   `set(newVal)`: change the value and trigger listeners
+
+### interface `Composed<Datums, Result>`
+
+The result of `compose`, a computed value over cursors
+
+-   `onChange`: listeners triggered when the result of the computation changes
+-   `val`: the computed value
+-   `stopListening`: Destroy this composed datum. Stop listening to the initial cursors.
+    If you try to add a cursor (`.onChange`) after this, it will throw an error.
