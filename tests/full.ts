@@ -48,8 +48,8 @@ function reducerPattern() {
     enemyId.set(2)
     enemyId.set(5)
     enemyId.set(17)
-    console.log('seen:', seenEnemies.get())
-    deepStrictEqual(seenEnemies.get(), [1, 2, 5, 17])
+    console.log('seen:', seenEnemies.val)
+    deepStrictEqual(seenEnemies.val, [1, 2, 5, 17])
 }
 
 /** If you don't need onChange to fire, then you can make your reducer
@@ -70,7 +70,7 @@ function efficientReducer() {
         id.set(i)
     }
     const elapsed = stopClock()
-    strictEqual(seenIds.get().length, 1_000_000)
+    strictEqual(seenIds.val.length, 1_000_000)
     ok(elapsed < 1_000)
 }
 
@@ -120,7 +120,7 @@ function composeMixed() {
     d.set(100)
     d.set(3)
     strictEqual(counter, 4)
-    strictEqual(c2.get(), 15)
+    strictEqual(c2.val, 15)
 }
 
 // ===== UTILITIES =====

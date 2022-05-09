@@ -7,7 +7,7 @@ type Unsubscribe = () => void
 /** A Datum, ComposedDatum, or RODatum */
 export interface AnyDatum<T> {
     onChange(cb: ChangeListener<T>, runImmediately?: boolean): Unsubscribe
-    get(): T
+    val: T
 }
 
 export function datum<T>(initial: T): Datum<T> {
@@ -20,7 +20,7 @@ export function toReadonly<T>(d: AnyDatum<T>): RODatum<T> {
 
 export function compose<Out, Ds extends DatumMap>(
     compute: (
-        vals: { [K in keyof Ds]: ReturnType<Ds[K]['get']> },
+        vals: { [K in keyof Ds]: Ds[K]['val'] },
         lastOut: Out | null
     ) => Out,
     cursors: Ds
@@ -34,7 +34,7 @@ class Datum<T> implements AnyDatum<T> {
     constructor(initial: T) {
         this.#val = initial
     }
-    get() {
+    get val() {
         return this.#val
     }
     set(newVal: T) {
@@ -72,14 +72,14 @@ class Composed<Ds extends DatumMap, Out> implements AnyDatum<Out> {
     #onDestroy: Unsubscribe[] = []
     #val: Out
     #compute: (
-        vals: { [K in keyof Ds]: ReturnType<Ds[K]['get']> },
+        vals: { [K in keyof Ds]: ReturnType<Ds[K]['val']> },
         lastOut: Out | null
     ) => Out
     #cursors: Ds
 
     constructor(
         compute: (
-            vals: { [K in keyof Ds]: ReturnType<Ds[K]['get']> },
+            vals: { [K in keyof Ds]: Ds[K]['val'] },
             lastOut: Out | null
         ) => Out,
         cursors: Ds
@@ -94,7 +94,7 @@ class Composed<Ds extends DatumMap, Out> implements AnyDatum<Out> {
         this.#val = this.#compute(this.#getAll(), null)
     }
 
-    get(): Out {
+    get val(): Out {
         return this.#val
     }
 
@@ -140,10 +140,10 @@ class Composed<Ds extends DatumMap, Out> implements AnyDatum<Out> {
     #getAll() {
         const o: any = {}
         for (const k in this.#cursors) {
-            o[k] = this.#cursors[k].get()
+            o[k] = this.#cursors[k].val
         }
 
-        return o as { [K in keyof Ds]: ReturnType<Ds[K]['get']> }
+        return o as { [K in keyof Ds]: Ds[K]['val'] }
     }
 }
 
@@ -155,8 +155,8 @@ class RODatum<T> implements AnyDatum<T> {
     onChange(cb: ChangeListener<T>, runImmediately?: boolean): Unsubscribe {
         return this.#datum.onChange(cb, runImmediately)
     }
-    get(): T {
-        return this.#datum.get()
+    get val(): T {
+        return this.#datum.val
     }
 }
 
