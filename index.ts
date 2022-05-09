@@ -161,3 +161,10 @@ class RODatum<T> implements AnyDatum<T> {
 }
 
 export type { Datum, Composed, RODatum }
+
+export function datums<T extends any[]>(
+    ...args: T
+): { [K in keyof T]: Datum<T[K]> } {
+    // @ts-expect-error
+    return args.map(x => new Datum(x))
+}

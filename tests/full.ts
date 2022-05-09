@@ -1,5 +1,5 @@
 import { deepStrictEqual, strictEqual, ok } from 'assert'
-import { datum, compose, toReadonly } from '../index'
+import { datum, compose, toReadonly, datums } from '../index'
 import { performance } from 'perf_hooks'
 
 /** Datums use very little memory and have zero background activity,
@@ -123,6 +123,13 @@ function composeMixed() {
     strictEqual(c2.val, 15)
 }
 
+function testDatums() {
+    const [x, y, z] = datums(1, 'two', 3)
+    strictEqual(x.val, 1)
+    strictEqual(y.val, 'two')
+    strictEqual(z.val, 3)
+}
+
 // ===== UTILITIES =====
 
 function getMemoryMb(): any {
@@ -141,6 +148,7 @@ function startClock() {
 
 function main() {
     const tests = [
+        testDatums,
         composeMixed,
         testMemory,
         testCompose,
