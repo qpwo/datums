@@ -1,12 +1,12 @@
 {
   "name": "datums",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Very light reactive data. Efficient & composable.",
   "main": "dist/index.cjs.js",
   "module": "dist/index.esm.js",
   "files": [
     "dist/indes.cjs.js",
-    "dist/indes.esm.js",
+    "dist/index.esm.js",
     "dist/index.d.ts",
     "README.md",
     "package.json"
