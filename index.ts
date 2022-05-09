@@ -1,4 +1,4 @@
-import { deepEqual } from 'fast-equals'
+import { deepEqual, shallowEqual } from 'fast-equals'
 
 type ChangeListener<T> = (val: T, prev: T, unsub: Unsubscribe) => void
 
@@ -19,18 +19,19 @@ export function toReadonly<T>(d: AnyDatum<T>): RODatum<T> {
 }
 
 export function compose<Out, Ds extends DatumMap>(
-    compute: (
-        vals: { [K in keyof Ds]: Ds[K]['val'] },
-        lastOut: Out | null
-    ) => Out,
+    compute: (vals: ValsOf<Ds>, lastOut: Out | null) => Out,
     cursors: Ds
-): Composed<Ds, Out> {
+): Composed<Out, Ds> {
     return new Composed(compute, cursors)
 }
 
+const UNSET = Symbol('UNSET')
 class Datum<T> implements AnyDatum<T> {
     #val: T
     #listeners: (ChangeListener<T> | undefined)[] = []
+    /** just for _setLater() and _flush() */
+    #lastVal: T | typeof UNSET = UNSET
+
     constructor(initial: T) {
         this.#val = initial
     }
@@ -38,60 +39,63 @@ class Datum<T> implements AnyDatum<T> {
         return this.#val
     }
     set(newVal: T) {
-        if (deepEqual(this.#val, newVal)) return
         const oldVal = this.#val
         this.#val = newVal
-        for (let i = 0; i < this.#listeners.length; i++) {
-            const listener = this.#listeners[i]
-            if (listener)
-                listener(newVal, oldVal, () => (this.#listeners[i] = undefined))
-        }
+        maybeNotifyListeners(this.#listeners, newVal, oldVal)
     }
     apply(update: (old: T) => T) {
         const newVal = update(this.#val)
         this.set(newVal)
     }
+
     onChange(cb: ChangeListener<T>, runImmediately?: boolean): Unsubscribe {
-        let i = 0
-        while (true) {
-            if (this.#listeners[i] === undefined) {
-                this.#listeners[i] = cb
-                if (runImmediately) cb(this.#val, this.#val, () => {})
-                return () => (this.#listeners[i] = undefined)
-            }
-            i++
+        return insertListener(this.#listeners, cb, this.#val, runImmediately)
+    }
+
+    /** just for setMany */
+    private _setLater(v: T) {
+        if (this.#lastVal === UNSET) {
+            this.#lastVal = this.#val
         }
+        this.#val = v
+    }
+
+    /** just for setMany */
+    private _flush() {
+        if (this.#lastVal === UNSET) return
+        const oldVal = this.#lastVal
+        this.#lastVal = UNSET
+        if (deepEqual(this.#val, oldVal)) return
+        maybeNotifyListeners(this.#listeners, this.#val, oldVal)
     }
 }
 
 type DatumMap = Record<string, AnyDatum<any>>
+type ValsOf<Ds extends DatumMap> = { [K in keyof Ds]: Ds[K]['val'] }
 
-class Composed<Ds extends DatumMap, Out> implements AnyDatum<Out> {
+class Composed<Out, Ds extends DatumMap> implements AnyDatum<Out> {
     #listeners: (ChangeListener<Out> | undefined)[] = []
     #destroyed = false
     #onDestroy: Unsubscribe[] = []
     #val: Out
-    #compute: (
-        vals: { [K in keyof Ds]: ReturnType<Ds[K]['val']> },
-        lastOut: Out | null
-    ) => Out
+    #compute: (vals: ValsOf<Ds>, lastOut: Out | null) => Out
     #cursors: Ds
+    #lastIn: ValsOf<Ds>
 
     constructor(
-        compute: (
-            vals: { [K in keyof Ds]: Ds[K]['val'] },
-            lastOut: Out | null
-        ) => Out,
+        compute: (vals: ValsOf<Ds>, lastOut: Out | null) => Out,
         cursors: Ds
     ) {
         this.#compute = compute
         this.#cursors = cursors
         for (const k in cursors) {
             this.#onDestroy.push(
-                cursors[k].onChange(() => this.#handleUpdate())
+                cursors[k].onChange(v => this.#handleUpdate(k, v))
             )
         }
-        this.#val = this.#compute(this.#getAll(), null)
+        const collected = this.#getAll()
+        this.#lastIn = collected
+        this.#val = this.#compute(collected, null)
     }
 
     get val(): Out {
@@ -101,15 +105,7 @@ class Composed<Ds extends DatumMap, Out> implements AnyDatum<Out> {
     onChange(cb: ChangeListener<Out>, runImmediately?: boolean): Unsubscribe {
         if (this.#destroyed)
             throw Error('Cannot listen to destroyed Composed datum')
-        let i = 0
-        while (true) {
-            if (this.#listeners[i] === undefined) {
-                this.#listeners[i] = cb
-                if (runImmediately) cb(this.#val, this.#val, () => {})
-                return () => (this.#listeners[i] = undefined)
-            }
-            i++
-        }
+        return insertListener(this.#listeners, cb, this.#val, runImmediately)
     }
 
     stopListening() {
@@ -121,29 +117,22 @@ class Composed<Ds extends DatumMap, Out> implements AnyDatum<Out> {
         this.#destroyed = true
     }
 
-    #handleUpdate() {
+    #handleUpdate<K extends keyof Ds>(k: K, v: Ds[K]['val']) {
+        if (shallowEqual(v, this.#lastIn[k])) return
         const oldVal = this.#val
-        this.#val = this.#compute(this.#getAll(), oldVal)
-        if (deepEqual(this.#val, oldVal)) return
-        for (let i = 0; i < this.#listeners.length; i++) {
-            const listener = this.#listeners[i]
-            if (listener) {
-                listener(
-                    this.#val,
-                    oldVal,
-                    () => (this.#listeners[i] = undefined)
-                )
-            }
-        }
+        const collected = this.#getAll()
+        this.#lastIn = collected
+        this.#val = this.#compute(collected, oldVal)
+        maybeNotifyListeners(this.#listeners, this.#val, oldVal)
     }
 
-    #getAll() {
+    #getAll(): ValsOf<Ds> {
         const o: any = {}
         for (const k in this.#cursors) {
             o[k] = this.#cursors[k].val
         }
 
-        return o as { [K in keyof Ds]: Ds[K]['val'] }
+        return o
     }
 }
 
@@ -167,4 +156,47 @@ export function datums<T extends any[]>(
 ): { [K in keyof T]: Datum<T[K]> } {
     // @ts-expect-error
     return args.map(x => new Datum(x))
+}
+
+type PairsFor<Vals> = {
+    [K in keyof Vals]: [Datum<Vals[K]>, Vals[K]]
+}
+
+export function setMany<T extends any[]>(...pairs: PairsFor<T>): void {
+    // @ts-expect-error
+    for (const [d, v] of pairs) d._setLater(v)
+    // @ts-expect-error
+    for (const [d] of pairs) d._flush()
+}
+
+function insertListener<T>(
+    listeners: (ChangeListener<T> | undefined)[],
+    cb: ChangeListener<T>,
+    val: T,
+    runImmediately?: boolean
+): Unsubscribe {
+    let i = 0
+    while (true) {
+        if (listeners[i] === undefined) {
+            listeners[i] = cb
+            const unsub = () => (listeners[i] = undefined)
+            if (runImmediately) cb(val, val, unsub)
+            return unsub
+        }
+        i++
+    }
+}
+
+function maybeNotifyListeners<T>(
+    listeners: (ChangeListener<T> | undefined)[],
+    newVal: T,
+    oldVal: T
+) {
+    if (deepEqual(newVal, oldVal)) return
+    for (let i = 0; i < listeners.length; i++) {
+        const listener = listeners[i]
+        if (listener) {
+            listener(newVal, oldVal, () => (listeners[i] = undefined))
+        }
+    }
 }

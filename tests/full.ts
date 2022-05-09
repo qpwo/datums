@@ -1,5 +1,5 @@
 import { deepStrictEqual, strictEqual, ok } from 'assert'
-import { datum, compose, toReadonly, datums } from '../index'
+import { datum, compose, toReadonly, datums, setMany } from '../index'
 import { performance } from 'perf_hooks'
 
 /** Datums use very little memory and have zero background activity,
@@ -23,6 +23,17 @@ function testMemory() {
     const dummyMemory = mem1 - mem0
     const datumMemory = mem2 - mem1
     ok(datumMemory < dummyMemory * 4)
+}
+
+function testSpeed() {
+    const stopBaselineClock = startClock()
+    Array.from({ length: 10_000_000 }, () => Math.random())
+    const baseline = stopBaselineClock()
+    const stopDatumClock = startClock()
+    Array.from({ length: 10_000_000 }, () => datum(Math.random()))
+    const datumTime = stopDatumClock()
+    console.log({ baseline, datumTime })
+    ok(datumTime < baseline * 10)
 }
 
 /** A simple example of composing datums */
@@ -130,6 +141,36 @@ function testDatums() {
     strictEqual(z.val, 3)
 }
 
+function testSetMany() {
+    const [x, y, z] = datums(12, 12, 12)
+    let x2Count = 0
+    const x2 = compose(
+        ({ x }) => {
+            x2Count++
+            return x * x
+        },
+        { x }
+    )
+    setMany([x, 1], [x, 2], [x, 3], [x, 12])
+    strictEqual(x2Count, 1, 'x2Count')
+    let productCount = 0
+    let productChanges = 0
+    const product = compose(
+        ({ x, y, z }) => {
+            productCount += 1
+            return x * y * z
+        },
+        { x, y, z }
+    )
+    product.onChange(() => productChanges++)
+    setMany([x, 24], [y, 1], [z, 72])
+    setMany([x, 12], [y, 12], [z, 12])
+    setMany([x, 12], [y, 12], [z, 13])
+    strictEqual(productCount, 4, 'productCount')
+    strictEqual(productChanges, 1, 'productChanges')
+    strictEqual(product.val, 12 * 12 * 13)
+}
+
 // ===== UTILITIES =====
 
 function getMemoryMb(): any {
@@ -148,13 +189,15 @@ function startClock() {
 
 function main() {
     const tests = [
+        testSetMany,
         testDatums,
         composeMixed,
-        testMemory,
         testCompose,
         reducerPattern,
         efficientReducer,
         classNamesArePreserved,
+        testSpeed,
+        testMemory,
     ]
     for (const t of tests) {
         console.log(`\n\nstarting test ${t.name}`)
