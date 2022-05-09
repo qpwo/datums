@@ -1,5 +1,5 @@
 import { deepStrictEqual, strictEqual, ok } from 'assert'
-import { datum, compose, toReadonly } from 'datums'
+import { datum, compose, toReadonly } from '../index'
 import { performance } from 'perf_hooks'
 
 /** Datums use very little memory and have zero background activity,
@@ -105,7 +105,7 @@ function classNamesArePreserved() {
     const r = toReadonly(d)
     strictEqual(d.constructor.name, 'Datum')
     strictEqual(c.constructor.name, 'Composed')
-    strictEqual(r.constructor.name, 'ROeDatum')
+    strictEqual(r.constructor.name, 'RODatum')
 }
 
 // ===== UTILITIES =====
@@ -139,6 +139,7 @@ function main() {
         } catch (e_) {
             const e = e_ as Error
             console.error(`${t.name} FAILED:`, e.message)
+            process.exitCode = 1
             continue
         }
         console.log(`test ${t.name} passed`)

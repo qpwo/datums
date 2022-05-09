@@ -1,6 +1,6 @@
 {
     "scripts": {
-        "test": "node esm.mjs && node cjs.js && esr full.ts && echo 'http://localhost:8000' && python3 -m http.server"
+        "test": "node esm.mjs && node cjs.js && esr full.ts && open http://localhost:8000 && python3 -m http.server"
     },
     "devDependencies": {
         "@types/node": "^17.0.31",
