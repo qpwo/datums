@@ -34,7 +34,7 @@ function testSpeed() {
     Array.from({ length: 10_000_000 }, () => datum(Math.random()))
     const datumTime = stopDatumClock()
     console.log({ baseline, datumTime })
-    ok(datumTime < baseline * 4)
+    ok(datumTime < baseline * 9)
 }
 
 /** A simple example of composing datums */
