@@ -49,9 +49,9 @@ fetch('example.com/data.json')
 
 ## Full API
 
-### function `datum(initial): Datum`
+### `datum(initial): Datum`
 
-A reactive piece of data. Has `set`, `val`, and `onChange`.\
+Make a reactive piece of data. Has `set`, `val`, and `onChange`.\
 `onChange` is only triggered if `deepEquals(newVal, oldVal)` is false.
 
 ```ts
@@ -64,7 +64,7 @@ d.val // => 6
 unsub()
 ```
 
-### function `compose(compute, cursors): Composed`
+### `compose(compute, cursors): Composed`
 
 Compute one or more datums into a read-only datum.\
 `onChange` is only triggered if `deepEquals(out, lastOut)` is false.
@@ -77,16 +77,16 @@ product.val // => 15
 product.onChange(console.log)
 ```
 
-### function `datums(...initialValues)`
+### `datums(...initialValues)`
 
-Convenience method to make multiple datums simultaneously
+Convenience function to make multiple datums simultaneously
 
 ```ts
 const [id, count, name] = datums(111, 0, 'Bob')
 count.set(count.val + 1)
 ```
 
-### function `setMany(...pairs)`
+### `setMany(...pairs)`
 
 Set several datums and don't trigger listeners or update `.val` until the end
 
@@ -98,7 +98,7 @@ setMany([base, 9], [exp, 2])
 // onChange is not triggered because the final result is the same.
 ```
 
-### interface `RODatum<T>`
+### `RODatum<T>`
 
 Read-only datum (matches result from `datum` or `compose`).
 
@@ -119,7 +119,7 @@ export const health: RODatum<number> = health_
 -   `val: T`
     -   Current value of datum
 
-### interface `Datum<T>`
+### `Datum<T>`
 
 The result of `datum`, a reactive value.
 
@@ -127,7 +127,7 @@ The result of `datum`, a reactive value.
 -   `val`: same as above
 -   `set(newVal)`: change the value and trigger listeners
 
-### interface `Composed<Datums, Result>`
+### `Composed<Datums, Result>`
 
 The result of `compose`, a computed value over cursors
 
