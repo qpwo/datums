@@ -1,6 +1,6 @@
 # datums
 
-Very light reactive data. Efficient & composable. Very simple. Full type checking and editor hints on all functions and methods.
+Very light reactive data. Efficient & composable. Very simple. Full type checking and editor hints on all functions and methods. A bit different from redux or baobab.
 
 ```sh
 npm i datums
