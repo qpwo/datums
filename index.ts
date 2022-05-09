@@ -4,20 +4,49 @@ import { deepEqual, shallowEqual } from 'fast-equals'
 
 type ChangeListener<T> = (val: T, prev: T, unsub: Unsubscribe) => void
 type Unsubscribe = () => void
-/** Any readable datum (Datum, ComposedDatum, or ReadonlyDatum) */
+
+/** Read-only datum (matches result from {@link datum} or {@link compose}).
+ *
+ *  Can use as a parameter type for non-mutating functions.
+ *  @example
+ *      function Header(title: RODatum<string>) {
+ *         return compose(({ title }) => `<h1>${title}</h1>`, { title })
+ *      }
+ *
+ *  Also useful for exporting a value from a module.
+ *  @example
+ *    const health_ = datum(100)
+ *    export const health: RODatum<number> = health_
+ *    // other modules will get type error if they `.set()`
+ */
 export interface RODatum<T> {
     onChange(cb: ChangeListener<T>, runImmediately?: boolean): Unsubscribe
     val: T
 }
 
+/** A reactive piece of data. Has `set`, `val`, and `onChange`.
+ *  `onChange` is only triggered if deepEquals(newVal, oldVal) is false.
+ * @example
+ *     const d = datum(2)
+ *     d.onChange((val, prev, _unsubscribe) =>
+ *         console.log(`changed from ${prev} to ${val}`)
+ *     )
+ *     d.set(d.val * 3)
+ *     d.val // => 6
+ */
 export function datum<T>(initial: T): Datum<T> {
     return new Datum(initial)
 }
 
-export function toReadonly<T>(d: RODatum<T>): RODatum<T> {
-    return new ReadonlyDatum(d)
-}
-
+/** Compute one or more datums into a read-only datum.
+ *  `onChange` is only triggered if deepEquals(newVal, oldVal) is false.
+ * @example
+ *    const x = datum(3)
+ *    const y = datum(5)
+ *    const product = compose(({ x, y }) => x * y, { x, y })
+ *    product.val // => 15
+ *    product.onChange(console.log)
+ */
 export function compose<Out, Ds extends DatumMap>(
     compute: (vals: ValsOf<Ds>, lastOut: Out | null) => Out,
     cursors: Ds
@@ -25,6 +54,11 @@ export function compose<Out, Ds extends DatumMap>(
     return new Composed(compute, cursors)
 }
 
+/** Convenience method to make multiple datums simultaneously
+ * @example
+ *   const [id, count, name] = datums(111, 0, 'Bob')
+ *   count.set(count.val + 1)
+ */
 export function datums<T extends any[]>(
     ...args: T
 ): { [K in keyof T]: Datum<T[K]> } {
@@ -32,6 +66,19 @@ export function datums<T extends any[]>(
     return args.map(x => new Datum(x))
 }
 
+/** Set several datums and don't trigger listeners or update `.val` until the end
+ * @example
+ *     const [base, exp] = datums(3, 4)
+ *     const bToE = compose(({ base, exp }) => base ** exp, { base, exp })
+ *     bToE.onChange(console.log)
+ *     setMany([base, 9], [exp, 2])
+ *     // onChange is not triggered because the final result is the same.
+ *
+ * @example
+ *     const [x, y, z] = datums(1, 2, 3)
+ *     setMany([x, y.val], [y, z.val], [z, x.val])
+ *     [x.val, y.val, z.val] // => [2, 3, 1]
+ */
 export function setMany<T extends any[]>(
     ...pairs: { [K in keyof T]: [Datum<T[K]>, T[K]] }
 ): void {
@@ -44,6 +91,7 @@ export function setMany<T extends any[]>(
 export type { Datum, Composed }
 
 const UNSET = Symbol('UNSET')
+/** The result of {@link datum} */
 class Datum<T> implements RODatum<T> {
     #val: T
     #listeners: (ChangeListener<T> | undefined)[] = []
@@ -53,19 +101,22 @@ class Datum<T> implements RODatum<T> {
     constructor(initial: T) {
         this.#val = initial
     }
+    /** Current value of datum */
     get val() {
         return this.#val
     }
+
+    /** Change value of datum and trigger any listeners */
     set(newVal: T) {
         const oldVal = this.#val
         this.#val = newVal
         maybeNotifyListeners(this.#listeners, newVal, oldVal)
     }
-    apply(update: (old: T) => T) {
-        const newVal = update(this.#val)
-        this.set(newVal)
-    }
 
+    /** Trigger this callback whenever val changes
+     * @param cb - callback taking newVal, oldVal, and unsubscribe
+     * @param runImmediately - if true, run callback immediately
+     */
     onChange(cb: ChangeListener<T>, runImmediately?: boolean): Unsubscribe {
         return insertListener(this.#listeners, cb, this.#val, runImmediately)
     }
@@ -83,13 +134,13 @@ class Datum<T> implements RODatum<T> {
         if (this.#lastVal === UNSET) return
         const oldVal = this.#lastVal
         this.#lastVal = UNSET
-        if (deepEqual(this.#val, oldVal)) return
         maybeNotifyListeners(this.#listeners, this.#val, oldVal)
     }
 }
 
 type DatumMap = Record<string, RODatum<any>>
 type ValsOf<Ds extends DatumMap> = { [K in keyof Ds]: Ds[K]['val'] }
+/** The result of {@link compose} */
 class Composed<Out, Ds extends DatumMap> implements RODatum<Out> {
     #listeners: (ChangeListener<Out> | undefined)[] = []
     #destroyed = false
@@ -115,16 +166,24 @@ class Composed<Out, Ds extends DatumMap> implements RODatum<Out> {
         this.#val = this.#compute(collected, null)
     }
 
+    /** Computed value from cursors */
     get val(): Out {
         return this.#val
     }
 
+    /** Trigger this callback whenever the computed value changes. (Is not deepEqual to the previous output.)
+     * @param cb - callback taking newVal, oldVal, and unsubscribe
+     * @param runImmediately - if true, run callback immediately
+     */
     onChange(cb: ChangeListener<Out>, runImmediately?: boolean): Unsubscribe {
         if (this.#destroyed)
             throw Error('Cannot listen to destroyed Composed datum')
         return insertListener(this.#listeners, cb, this.#val, runImmediately)
     }
 
+    /** Destroy this composed datum. Stop listening to the initial cursors.
+     * If you try to add a cursor (`.onChange`) after this, it will throw an error.
+     */
     stopListening() {
         for (const unsub of this.#onDestroy) {
             unsub()
@@ -148,21 +207,7 @@ class Composed<Out, Ds extends DatumMap> implements RODatum<Out> {
         for (const k in this.#cursors) {
             o[k] = this.#cursors[k].val
         }
-
         return o
-    }
-}
-
-class ReadonlyDatum<T> implements RODatum<T> {
-    #datum: RODatum<T>
-    constructor(datum: RODatum<T>) {
-        this.#datum = datum
-    }
-    onChange(cb: ChangeListener<T>, runImmediately?: boolean): Unsubscribe {
-        return this.#datum.onChange(cb, runImmediately)
-    }
-    get val(): T {
-        return this.#datum.val
     }
 }
 

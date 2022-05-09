@@ -1,5 +1,5 @@
 import { deepStrictEqual, strictEqual, ok } from 'assert'
-import { datum, compose, toReadonly, datums, setMany } from '../index'
+import { datum, compose, datums, setMany } from '../index'
 import { performance } from 'perf_hooks'
 
 /** Datums use very little memory and have zero background activity,
@@ -113,17 +113,15 @@ function htmlRenderExample() {
 function classNamesArePreserved() {
     const d = datum(1)
     const c = compose(({ d }) => d * 2, { d })
-    const r = toReadonly(d)
     strictEqual(d.constructor.name, 'Datum')
     strictEqual(c.constructor.name, 'Composed')
-    strictEqual(r.constructor.name, 'RODatum')
 }
 
 function composeMixed() {
     const d = datum(1)
-    const c = compose(({ d }) => d * 2, { d })
-    const r = toReadonly(c)
-    const c2 = compose(({ d, c, r }) => d + c + r, { d, c, r })
+    const c0 = compose(({ d }) => d * 2, { d })
+    const c1 = compose(({ c0 }) => c0 * 3, { c0 })
+    const c2 = compose(({ d, c0, c1 }) => d + c0 + c1, { d, c0, c1 })
     let counter = 0
     c2.onChange(() => counter++)
     d.set(2)
@@ -131,7 +129,7 @@ function composeMixed() {
     d.set(100)
     d.set(3)
     strictEqual(counter, 4)
-    strictEqual(c2.val, 15)
+    strictEqual(c2.val, 27)
 }
 
 function testDatums() {
@@ -171,6 +169,34 @@ function testSetMany() {
     strictEqual(product.val, 12 * 12 * 13)
 }
 
+function setManyCycle() {
+    const [x, y, z] = datums(1, 2, 3)
+    setMany([x, y.val], [y, z.val], [z, x.val])
+    deepStrictEqual([x.val, y.val, z.val], [2, 3, 1])
+}
+
+/** 500k listeners spread over 10k datums then trigger 10k random ones once each */
+function lotsOfListeners() {
+    const start = performance.now()
+    const datums = Array.from({ length: 10_000 }, () => datum(Math.random()))
+    for (let i = 0; i < 10_000; i++) {
+        const idx = Math.floor(Math.random() * 10_000)
+        for (let j = 0; j < 500; j++) {
+            datums[idx].onChange(() => {})
+        }
+    }
+    const attached = performance.now()
+    for (let i = 0; i < 10_000; i++) {
+        const idx = Math.floor(Math.random() * 10_000)
+        datums[idx].set(Math.random())
+    }
+    const sentAll = performance.now()
+    const attachTime = attached - start
+    const sendTime = sentAll - attached
+    console.log({ attachTime, sendTime })
+    ok(sentAll - start < 10_000)
+}
+
 // ===== UTILITIES =====
 
 function getMemoryMb(): any {
@@ -189,6 +215,7 @@ function startClock() {
 
 function main() {
     const tests = [
+        setManyCycle,
         testSetMany,
         testDatums,
         composeMixed,
@@ -196,8 +223,9 @@ function main() {
         reducerPattern,
         efficientReducer,
         classNamesArePreserved,
-        testSpeed,
         testMemory,
+        testSpeed,
+        lotsOfListeners,
     ]
     for (const t of tests) {
         console.log(`\n\nstarting test ${t.name}`)
