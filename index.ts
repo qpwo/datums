@@ -4,11 +4,17 @@ type ChangeListener<T> = (val: T, prev: T, unsub: Unsubscribe) => void
 
 type Unsubscribe = () => void
 
+/** A Datum, ComposedDatum, or RODatum */
+export interface AnyDatum<T> {
+    onChange(cb: ChangeListener<T>, runImmediately?: boolean): Unsubscribe
+    get(): T
+}
+
 export function datum<T>(initial: T): Datum<T> {
     return new Datum(initial)
 }
 
-export function toReadonly<T>(d: Datum<T>): RODatum<T> {
+export function toReadonly<T>(d: AnyDatum<T>): RODatum<T> {
     return new RODatum(d)
 }
 
@@ -22,7 +28,7 @@ export function compose<Out, Ds extends DatumMap>(
     return new Composed(compute, cursors)
 }
 
-class Datum<T> {
+class Datum<T> implements AnyDatum<T> {
     #val: T
     #listeners: (ChangeListener<T> | undefined)[] = []
     constructor(initial: T) {
@@ -58,9 +64,9 @@ class Datum<T> {
     }
 }
 
-type DatumMap = Record<string, Datum<any> | RODatum<any>>
+type DatumMap = Record<string, AnyDatum<any>>
 
-class Composed<Ds extends DatumMap, Out> {
+class Composed<Ds extends DatumMap, Out> implements AnyDatum<Out> {
     #listeners: (ChangeListener<Out> | undefined)[] = []
     #destroyed = false
     #onDestroy: Unsubscribe[] = []
@@ -141,9 +147,9 @@ class Composed<Ds extends DatumMap, Out> {
     }
 }
 
-class RODatum<T> {
-    #datum: Datum<T>
-    constructor(datum: Datum<T>) {
+class RODatum<T> implements AnyDatum<T> {
+    #datum: AnyDatum<T>
+    constructor(datum: AnyDatum<T>) {
         this.#datum = datum
     }
     onChange(cb: ChangeListener<T>, runImmediately?: boolean): Unsubscribe {
@@ -154,4 +160,4 @@ class RODatum<T> {
     }
 }
 
-export type { Datum, Composed }
+export type { Datum, Composed, RODatum }
