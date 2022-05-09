@@ -4,26 +4,12 @@ type ChangeListener<T> = (val: T, prev: T, unsub: Unsubscribe) => void
 
 type Unsubscribe = () => void
 
-export interface RODatum<T = unknown> {
-    get(): T
-    onChange(cb: ChangeListener<T>, runImmediately?: boolean): Unsubscribe
+export function datum<T>(initial: T): Datum<T> {
+    return new Datum(initial)
 }
 
-export interface Datum<T = unknown> extends RODatum<T> {
-    set(newVal: T): void
-    apply(update: (old: T) => T): void
-}
-
-export interface ComposedDatum<T = unknown> extends RODatum<T> {
-    stopListening(): void
-}
-
-export function datum<T = unknown>(initial: T): Datum<T> {
-    return new Datum_(initial)
-}
-
-export function toReadonly<T = unknown>(d: Datum<T>): RODatum<T> {
-    return { onChange: (...args) => d.onChange(...args), get: () => d.get() }
+export function toReadonly<T>(d: Datum<T>): RODatum<T> {
+    return new RODatum(d)
 }
 
 export function compose<Out, Ds extends DatumMap>(
@@ -32,11 +18,11 @@ export function compose<Out, Ds extends DatumMap>(
         lastOut: Out | null
     ) => Out,
     cursors: Ds
-): ComposedDatum<Out> {
-    return new Compose_(compute, cursors)
+): Composed<Ds, Out> {
+    return new Composed(compute, cursors)
 }
 
-class Datum_<T> implements Datum<T> {
+class Datum<T> {
     #val: T
     #listeners: (ChangeListener<T> | undefined)[] = []
     constructor(initial: T) {
@@ -72,9 +58,9 @@ class Datum_<T> implements Datum<T> {
     }
 }
 
-type DatumMap = Record<string, RODatum<any>>
+type DatumMap = Record<string, Datum<any> | RODatum<any>>
 
-class Compose_<Ds extends DatumMap, Out> implements ComposedDatum<Out> {
+class Composed<Ds extends DatumMap, Out> {
     #listeners: (ChangeListener<Out> | undefined)[] = []
     #destroyed = false
     #onDestroy: Unsubscribe[] = []
@@ -106,7 +92,7 @@ class Compose_<Ds extends DatumMap, Out> implements ComposedDatum<Out> {
         return this.#val
     }
 
-    onChange(cb: ChangeListener<Out>, runImmediately: boolean): Unsubscribe {
+    onChange(cb: ChangeListener<Out>, runImmediately?: boolean): Unsubscribe {
         if (this.#destroyed)
             throw Error('Cannot listen to destroyed Composed datum')
         let i = 0
@@ -154,3 +140,18 @@ class Compose_<Ds extends DatumMap, Out> implements ComposedDatum<Out> {
         return o as { [K in keyof Ds]: ReturnType<Ds[K]['get']> }
     }
 }
+
+class RODatum<T> {
+    #datum: Datum<T>
+    constructor(datum: Datum<T>) {
+        this.#datum = datum
+    }
+    onChange(cb: ChangeListener<T>, runImmediately?: boolean): Unsubscribe {
+        return this.#datum.onChange(cb, runImmediately)
+    }
+    get(): T {
+        return this.#datum.get()
+    }
+}
+
+export type { Datum, Composed }

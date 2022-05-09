@@ -8,6 +8,7 @@
         "declaration": true,
         "emitDeclarationOnly": true,
         "outDir": "./dist"
-    },
-    "include": ["index.ts"]
+    }
+    // Include test file anyway so we get strict typing on it
+    // "include": ["index.ts"]
 }
