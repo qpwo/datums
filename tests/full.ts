@@ -108,6 +108,21 @@ function classNamesArePreserved() {
     strictEqual(r.constructor.name, 'RODatum')
 }
 
+function composeMixed() {
+    const d = datum(1)
+    const c = compose(({ d }) => d * 2, { d })
+    const r = toReadonly(c)
+    const c2 = compose(({ d, c, r }) => d + c + r, { d, c, r })
+    let counter = 0
+    c2.onChange(() => counter++)
+    d.set(2)
+    d.set(3)
+    d.set(100)
+    d.set(3)
+    strictEqual(counter, 4)
+    strictEqual(c2.get(), 15)
+}
+
 // ===== UTILITIES =====
 
 function getMemoryMb(): any {
@@ -126,6 +141,7 @@ function startClock() {
 
 function main() {
     const tests = [
+        composeMixed,
         testMemory,
         testCompose,
         reducerPattern,
