@@ -41,7 +41,7 @@ function testSpeed() {
 function testCompose() {
     const x = datum(1)
     const yz = datum({ y: 2, z: 3 })
-    const product = compose(({ x, yz }) => x * yz.y * yz.z, { x, yz })
+    const product = compose(([x, yz]) => x * yz.y * yz.z, x, yz)
     product.onChange(p => console.log('product:', p))
     x.set(10)
     yz.set({ y: 3, z: 2 }) // no change
@@ -53,9 +53,9 @@ function testCompose() {
 function reducerPattern() {
     const enemyId = datum(1)
     const seenEnemies = compose(
-        ({ enemyId }, last: number[] | null) =>
+        ([enemyId], last: number[] | null) =>
             last == null ? [enemyId] : [...last, enemyId],
-        { enemyId }
+        enemyId
     )
     enemyId.set(2)
     enemyId.set(5)
@@ -71,12 +71,12 @@ function efficientReducer() {
     const stopClock = startClock()
     const id = datum(0)
     const seenIds = compose(
-        ({ id }, last: number[] | null) => {
+        ([id], last: number[] | null) => {
             if (last == null) return [id]
             last.push(id)
             return last
         },
-        { id }
+        id
     )
     for (let i = 0; i < 1_000_000; i++) {
         id.set(i)
@@ -91,15 +91,14 @@ function htmlExample() {
     const birthday = datum(new Date('1/1/1980'))
     const year = 365 * 24 * 60 * 60 * 1000
     const welcome = compose(
-        data => `
+        ([username, birthday]) => `
             <div>
-                <h1>Welcome ${data.username}!</h1>
-                <p>You are ${
-                    ((Date.now() - data.birthday.getTime()) / year) | 0
-                } years old.</p>
+                <h1>Welcome ${username}!</h1>
+                <p>You are ${((Date.now() - birthday.getTime()) / year) | 0
+            } years old.</p>
             </div>
         `,
-        { username, birthday }
+        username, birthday
     )
     return welcome
 }
@@ -113,16 +112,16 @@ function htmlRenderExample() {
 
 function classNamesArePreserved() {
     const d = datum(1)
-    const c = compose(({ d }) => d * 2, { d })
+    const c = compose(([d]) => d * 2, d)
     strictEqual(d.constructor.name, 'Datum')
     strictEqual(c.constructor.name, 'Composed')
 }
 
 function composeMixed() {
     const d = datum(1)
-    const c0 = compose(({ d }) => d * 2, { d })
-    const c1 = compose(({ c0 }) => c0 * 3, { c0 })
-    const c2 = compose(({ d, c0, c1 }) => d + c0 + c1, { d, c0, c1 })
+    const c0 = compose(([d]) => d * 2, d)
+    const c1 = compose(([c0]) => c0 * 3, c0)
+    const c2 = compose(([d, c0, c1]) => d + c0 + c1, d, c0, c1)
     let counter = 0
     c2.onChange(() => counter++)
     d.set(2)
@@ -144,22 +143,22 @@ function testSetMany() {
     const [x, y, z] = datums(12, 12, 12)
     let x2Count = 0
     const x2 = compose(
-        ({ x }) => {
+        ([x]) => {
             x2Count++
             return x * x
         },
-        { x }
+        x
     )
     setMany([x, 1], [x, 2], [x, 3], [x, 12])
     strictEqual(x2Count, 1, 'x2Count')
     let productCount = 0
     let productChanges = 0
     const product = compose(
-        ({ x, y, z }) => {
+        ([x, y, z]) => {
             productCount += 1
             return x * y * z
         },
-        { x, y, z }
+        x, y, z
     )
     product.onChange(() => productChanges++)
     setMany([x, 24], [y, 1], [z, 72])
@@ -183,7 +182,7 @@ function lotsOfListeners() {
     for (let i = 0; i < 10_000; i++) {
         const idx = Math.floor(Math.random() * 10_000)
         for (let j = 0; j < 500; j++) {
-            datums[idx].onChange(() => {})
+            datums[idx].onChange(() => { })
         }
     }
     const attached = performance.now()
@@ -206,7 +205,7 @@ function frequentUnsub() {
         if (Math.random() > 0.6 && unsubStack.length > 0) {
             unsubStack.pop()!()
         } else {
-            unsubStack.push(d.onChange(() => {}))
+            unsubStack.push(d.onChange(() => { }))
         }
     }
     const elapsed = stopClock()

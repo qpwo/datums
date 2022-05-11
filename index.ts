@@ -47,11 +47,11 @@ export function datum<T>(initial: T): Datum<T> {
  *    product.val // => 15
  *    product.onChange(console.log)
  */
-export function compose<Out, Ds extends DatumMap>(
+export function compose<Out, Ds extends DatumArr>(
     compute: (vals: ValsOf<Ds>, lastOut: Out | null) => Out,
-    cursors: Ds
+    ...cursors: Ds
 ): Composed<Out, Ds> {
-    return new Composed(compute, cursors)
+    return new Composed(compute, ...cursors)
 }
 
 /** Convenience method to make multiple datums simultaneously
@@ -138,10 +138,11 @@ class Datum<T> implements RODatum<T> {
     }
 }
 
+type DatumArr = RODatum<any>[]
 type DatumMap = Record<string, RODatum<any>>
-type ValsOf<Ds extends DatumMap> = { [K in keyof Ds]: Ds[K]['val'] }
+type ValsOf<Ds extends DatumArr> = { [K in keyof Ds]: Ds[K]['val'] }
 /** The result of {@link compose} */
-class Composed<Out, Ds extends DatumMap> implements RODatum<Out> {
+class Composed<Out, Ds extends DatumArr> implements RODatum<Out> {
     #listeners: (ChangeListener<Out> | undefined)[] = []
     #destroyed = false
     #onDestroy: Unsubscribe[] = []
@@ -152,13 +153,13 @@ class Composed<Out, Ds extends DatumMap> implements RODatum<Out> {
 
     constructor(
         compute: (vals: ValsOf<Ds>, lastOut: Out | null) => Out,
-        cursors: Ds
+        ...cursors: Ds
     ) {
         this.#compute = compute
         this.#cursors = cursors
-        for (const k in cursors) {
+        for (let idx = 0; idx < cursors.length; idx++) {
             this.#onDestroy.push(
-                cursors[k].onChange(v => this.#handleUpdate(k, v))
+                cursors[idx].onChange(v => this.#handleUpdate(idx, v))
             )
         }
         const collected = this.#getAll()
@@ -168,7 +169,12 @@ class Composed<Out, Ds extends DatumMap> implements RODatum<Out> {
 
     /** Computed value from cursors */
     get val(): Out {
+        if (this.#destroyed) throw new Error('cannot read val from destroyed cursor')
         return this.#val
+    }
+
+    get destroyed(): boolean {
+        return this.#destroyed
     }
 
     /** Trigger this callback whenever the computed value changes. (Is not deepEqual to the previous output.)
@@ -188,13 +194,24 @@ class Composed<Out, Ds extends DatumMap> implements RODatum<Out> {
         for (const unsub of this.#onDestroy) {
             unsub()
         }
-        this.#listeners.length = 0
-        this.#onDestroy.length = 0
+        // @ts-expect-error
+        this.#listeners = undefined
+        // @ts-expect-error
+        this.#onDestroy = undefined
         this.#destroyed = true
+        // @ts-expect-error
+        this.#val = undefined
+        // @ts-expect-error
+        this.#compute = undefined
+        // @ts-expect-error
+        this.#cursors = undefined
+        // @ts-expect-error
+        this.#lastIn = undefined
+
     }
 
-    #handleUpdate<K extends keyof Ds>(k: K, v: Ds[K]['val']) {
-        if (shallowEqual(v, this.#lastIn[k])) return
+    #handleUpdate<Idx extends number>(idx: Idx, v: Ds[Idx]['val']) {
+        if (shallowEqual(v, this.#lastIn[idx])) return
         const oldVal = this.#val
         const collected = this.#getAll()
         this.#lastIn = collected
@@ -203,11 +220,8 @@ class Composed<Out, Ds extends DatumMap> implements RODatum<Out> {
     }
 
     #getAll(): ValsOf<Ds> {
-        const o: any = {}
-        for (const k in this.#cursors) {
-            o[k] = this.#cursors[k].val
-        }
-        return o
+        // @ts-expect-error
+        return this.#cursors.map(d => d.val)
     }
 }
 
@@ -255,3 +269,6 @@ function maybeNotifyListeners<T>(
         listeners.length = j
     }
 }
+
+const [x, y, z] = datums(1, 2, '3')
+const hmm = compose(([x, y, z]) => 0, x, y, z)
