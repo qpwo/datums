@@ -16,17 +16,20 @@ for (let i = 0; i < runs; i++) {
     const m0 = getMemoryMb()
     const t0 = performance.now()
 
-    Array.from({ length: n }, () => new Baobab())
+    const barr = Array.from({ length: n }, () => new Baobab())
+    barr.forEach(b => b.get())
 
     const m1 = getMemoryMb()
     const t1 = performance.now()
 
-    Array.from({ length: n }, () => createStore(() => 0))
+    const rarr = Array.from({ length: n }, () => createStore(() => 0))
+    rarr.forEach(r => r.getState())
 
     const m2 = getMemoryMb()
     const t2 = performance.now()
 
-    Array.from({ length: n }, () => datum(0))
+    const darr = Array.from({ length: n }, () => datum(0))
+    darr.forEach(d => d.val)
 
     const m3 = getMemoryMb()
     const t3 = performance.now()

@@ -10,7 +10,7 @@ type Unsubscribe = () => void
  *  Can use as a parameter type for non-mutating functions.
  *  @example
  *      function Header(title: RODatum<string>) {
- *         return compose(({ title }) => `<h1>${title}</h1>`, { title })
+ *         return compose(([ title ]) => `<h1>${title}</h1>`, title)
  *      }
  *
  *  Also useful for exporting a value from a module.
@@ -38,20 +38,22 @@ export function datum<T>(initial: T): Datum<T> {
     return new Datum(initial)
 }
 
+type Compute<Out, Datums extends DatumArr> = (vals: ValsOf<Datums>, lastOut: Out | undefined, unsub: Unsubscribe) => Out
+
 /** Compute one or more datums into a read-only datum.
  *  `onChange` is only triggered if deepEquals(newVal, oldVal) is false.
  * @example
  *    const x = datum(3)
  *    const y = datum(5)
- *    const product = compose(({ x, y }) => x * y, { x, y })
+ *    const product = compose(([ x, y ]) => x * y, x, y)
  *    product.val // => 15
  *    product.onChange(console.log)
  */
-export function compose<Out, Ds extends DatumArr>(
-    compute: (vals: ValsOf<Ds>, lastOut: Out | null) => Out,
-    ...cursors: Ds
-): Composed<Out, Ds> {
-    return new Composed(compute, ...cursors)
+export function compose<Out, Datums extends DatumArr>(
+    compute: Compute<Out, Datums>,
+    ...datums: Datums
+): Composed<Out, Datums> {
+    return new Composed(compute, ...datums)
 }
 
 /** Convenience method to make multiple datums simultaneously
@@ -69,7 +71,7 @@ export function datums<T extends any[]>(
 /** Set several datums and don't trigger listeners or update `.val` until the end
  * @example
  *     const [base, exp] = datums(3, 4)
- *     const bToE = compose(({ base, exp }) => base ** exp, { base, exp })
+ *     const bToE = compose(([ base, exp ]) => base ** exp, base, exp)
  *     bToE.onChange(console.log)
  *     setMany([base, 9], [exp, 2])
  *     // onChange is not triggered because the final result is the same.
@@ -94,7 +96,7 @@ const UNSET = Symbol('UNSET')
 /** The result of {@link datum} */
 class Datum<T> implements RODatum<T> {
     #val: T
-    #listeners: (ChangeListener<T> | undefined)[] = []
+    #listeners: (ChangeListener<T> | undefined)[] | undefined
     /** just for _setLater() and _flush() */
     #lastVal: T | typeof UNSET = UNSET
 
@@ -118,6 +120,7 @@ class Datum<T> implements RODatum<T> {
      * @param runImmediately - if true, run callback immediately
      */
     onChange(cb: ChangeListener<T>, runImmediately?: boolean): Unsubscribe {
+        if (this.#listeners === undefined) this.#listeners = []
         return insertListener(this.#listeners, cb, this.#val, runImmediately)
     }
 
@@ -139,35 +142,35 @@ class Datum<T> implements RODatum<T> {
 }
 
 type DatumArr = RODatum<any>[]
-type DatumMap = Record<string, RODatum<any>>
-type ValsOf<Ds extends DatumArr> = { [K in keyof Ds]: Ds[K]['val'] }
+// @ts-ignore
+type ValsOf<Datums extends DatumArr> = { [K in keyof Datums]: Datums[K]['val'] }
 /** The result of {@link compose} */
-class Composed<Out, Ds extends DatumArr> implements RODatum<Out> {
-    #listeners: (ChangeListener<Out> | undefined)[] = []
+class Composed<Out, Datums extends DatumArr> implements RODatum<Out> {
+    #listeners: (ChangeListener<Out> | undefined)[] | undefined
     #destroyed = false
     #onDestroy: Unsubscribe[] = []
     #val: Out
-    #compute: (vals: ValsOf<Ds>, lastOut: Out | null) => Out
-    #cursors: Ds
-    #lastIn: ValsOf<Ds>
+    #compute: Compute<Out, Datums>
+    #datums: Datums
+    #lastIn: ValsOf<Datums>
 
     constructor(
-        compute: (vals: ValsOf<Ds>, lastOut: Out | null) => Out,
-        ...cursors: Ds
+        compute: Compute<Out, Datums>,
+        ...datums: Datums
     ) {
         this.#compute = compute
-        this.#cursors = cursors
-        for (let idx = 0; idx < cursors.length; idx++) {
+        this.#datums = datums
+        for (let idx = 0; idx < datums.length; idx++) {
             this.#onDestroy.push(
-                cursors[idx].onChange(v => this.#handleUpdate(idx, v))
+                datums[idx].onChange(v => this.#handleUpdate(idx, v))
             )
         }
         const collected = this.#getAll()
         this.#lastIn = collected
-        this.#val = this.#compute(collected, null)
+        this.#val = this.#compute(collected, undefined, () => this.unsub())
     }
 
-    /** Computed value from cursors */
+    /** Computed value from datums */
     get val(): Out {
         if (this.#destroyed) throw new Error('cannot read val from destroyed cursor')
         return this.#val
@@ -184,44 +187,44 @@ class Composed<Out, Ds extends DatumArr> implements RODatum<Out> {
     onChange(cb: ChangeListener<Out>, runImmediately?: boolean): Unsubscribe {
         if (this.#destroyed)
             throw Error('Cannot listen to destroyed Composed datum')
+        if (this.#listeners === undefined) this.#listeners = []
         return insertListener(this.#listeners, cb, this.#val, runImmediately)
     }
 
-    /** Destroy this composed datum. Stop listening to the initial cursors.
+    /** Destroy this composed datum. Stop listening to the initial datums.
      * If you try to add a cursor (`.onChange`) after this, it will throw an error.
      */
-    stopListening() {
-        for (const unsub of this.#onDestroy) {
-            unsub()
+    unsub() {
+        for (const unsubscribe of this.#onDestroy) {
+            unsubscribe()
         }
-        // @ts-expect-error
         this.#listeners = undefined
+        this.#destroyed = true
         // @ts-expect-error
         this.#onDestroy = undefined
-        this.#destroyed = true
         // @ts-expect-error
         this.#val = undefined
         // @ts-expect-error
         this.#compute = undefined
         // @ts-expect-error
-        this.#cursors = undefined
+        this.#datums = undefined
         // @ts-expect-error
         this.#lastIn = undefined
 
     }
 
-    #handleUpdate<Idx extends number>(idx: Idx, v: Ds[Idx]['val']) {
+    #handleUpdate<Idx extends number>(idx: Idx, v: Datums[Idx]['val']) {
         if (shallowEqual(v, this.#lastIn[idx])) return
         const oldVal = this.#val
         const collected = this.#getAll()
         this.#lastIn = collected
-        this.#val = this.#compute(collected, oldVal)
+        this.#val = this.#compute(collected, oldVal, () => this.unsub())
         maybeNotifyListeners(this.#listeners, this.#val, oldVal)
     }
 
-    #getAll(): ValsOf<Ds> {
+    #getAll(): ValsOf<Datums> {
         // @ts-expect-error
-        return this.#cursors.map(d => d.val)
+        return this.#datums.map(d => d.val)
     }
 }
 
@@ -239,10 +242,11 @@ function insertListener<T>(
 }
 
 function maybeNotifyListeners<T>(
-    listeners: (ChangeListener<T> | undefined)[],
+    listeners: (ChangeListener<T> | undefined)[] | undefined,
     newVal: T,
     oldVal: T
 ) {
+    if (listeners === undefined) return
     if (deepEqual(newVal, oldVal)) return
     let undefinedCount = 0
     for (let i = 0; i < listeners.length; i++) {
@@ -269,6 +273,3 @@ function maybeNotifyListeners<T>(
         listeners.length = j
     }
 }
-
-const [x, y, z] = datums(1, 2, '3')
-const hmm = compose(([x, y, z]) => 0, x, y, z)

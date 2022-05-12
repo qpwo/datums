@@ -14,6 +14,8 @@ function testMemory() {
         f() {
             return this.x
         }
+        g() { }
+        e() { }
     }
     const mem0 = getMemoryMb()
     const dummies = Array.from({ length: 1_000_000 }, () => new Dummy())
@@ -53,7 +55,7 @@ function testCompose() {
 function reducerPattern() {
     const enemyId = datum(1)
     const seenEnemies = compose(
-        ([enemyId], last: number[] | null) =>
+        ([enemyId], last?: number[]) =>
             last == null ? [enemyId] : [...last, enemyId],
         enemyId
     )
@@ -71,7 +73,7 @@ function efficientReducer() {
     const stopClock = startClock()
     const id = datum(0)
     const seenIds = compose(
-        ([id], last: number[] | null) => {
+        ([id], last?: number[]) => {
             if (last == null) return [id]
             last.push(id)
             return last
@@ -84,30 +86,6 @@ function efficientReducer() {
     const elapsed = stopClock()
     strictEqual(seenIds.val.length, 1_000_000)
     ok(elapsed < 1_000)
-}
-
-function htmlExample() {
-    const username = datum('tom')
-    const birthday = datum(new Date('1/1/1980'))
-    const year = 365 * 24 * 60 * 60 * 1000
-    const welcome = compose(
-        ([username, birthday]) => `
-            <div>
-                <h1>Welcome ${username}!</h1>
-                <p>You are ${((Date.now() - birthday.getTime()) / year) | 0
-            } years old.</p>
-            </div>
-        `,
-        username, birthday
-    )
-    return welcome
-}
-
-function htmlRenderExample() {
-    const document: any = null // remove for browser
-    const container = document.getElementById('container')
-    const welcome = htmlExample()
-    welcome.onChange(html => (container.innerHTML = html))
 }
 
 function classNamesArePreserved() {
@@ -250,7 +228,7 @@ function main() {
             t()
         } catch (e_) {
             const e = e_ as Error
-            console.error(`${t.name} FAILED:`, e.message)
+            console.error(`${t.name} FAILED:`, e)
             process.exitCode = 1
             continue
         }

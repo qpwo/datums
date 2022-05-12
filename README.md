@@ -6,10 +6,18 @@ Very light reactive data. Efficient & composable. Very simple. Full type checkin
 npm i datums
 ```
 
-**Basic API**: Make a datum with `datum(value)`. It has `.val`, `.set`, and `.onChange`. Compose datums with `compose(compute, datums)` to get a reactive computation. A computed value can be html, an image, a number, a reducer, etc. It's a very expressive & efficient pattern.
+**Basic API**: Make a datum with `datum(value)`. It has `.val`, `.set`, and `.onChange`. Compose datums with `compose(compute, ...datums)` to get a reactive computation. You can compute or store a number, a resource, html, a string, a class instance, anything. It's a very expressive & efficient pattern.
 
+They're similar to mithril's `stream`s and solid js's `signal`s, but simpler and easier to understand.
 
 ![memory](https://user-images.githubusercontent.com/10591373/167476373-1e3e0ec2-7a86-4299-93fe-7498a507e5bb.png)
+
+Some useful things to do with datums, look in [patterns.ts](tests/patterns.ts) for some examples:
+
+-   Impose a **constraint system**
+-   Manage a network of asynchronous events (user input, network requests) without callback hell
+-   Dynamically change DOM or graphics values without triggering massive re-renders
+-   Create an entire rendering system in a few lines
 
 ## Example
 
@@ -25,10 +33,10 @@ page.onChange(p => {
     renderPage(p)
 })
 page.set('About')
-const history = compose(({ page }, prev) => [...(prev ?? []), page], { page })
+const history = compose(([page], prev) => [...(prev ?? []), page], page)
 
 const [w, h] = datums(100, 10)
-const area = compose(({ w, h }) => w * h, { w, h })
+const area = compose(([w, h]) => w * h, w, h)
 const unsub = area.onChange(() => {
     throw Error('Area must never change')
 })
@@ -50,7 +58,9 @@ fetch('example.com/data.json')
     })
 ```
 
-## Full API
+# Full API
+
+## Functions
 
 ### `datum(initial): Datum`
 
@@ -67,15 +77,17 @@ d.val // => 6
 unsub()
 ```
 
-### `compose(compute, cursors): Composed`
+### `compose(compute, ...datums): Composed`
 
 Compute one or more datums into a read-only datum.\
 `onChange` is only triggered if `deepEquals(out, lastOut)` is false.
 
+-   `compute: (datumValues, lastOutput, unsubscribe) => Out`
+
 ```ts
 const x = datum(3)
 const y = datum(5)
-const product = compose(({ x, y }) => x * y, { x, y })
+const product = compose(([x, y]) => x * y, x, y)
 product.val // => 15
 product.onChange(console.log)
 ```
@@ -95,11 +107,13 @@ Set several datums and don't trigger listeners or update `.val` until the end
 
 ```ts
 const [base, exp] = datums(3, 4)
-const bToE = compose(({ base, exp }) => base ** exp, { base, exp })
+const bToE = compose(([b, e]) => b ** e, base, exp)
 bToE.onChange(console.log)
 setMany([base, 9], [exp, 2])
 // onChange is not triggered because the final result is the same.
 ```
+
+## Interfaces
 
 ### `RODatum<T>`
 
@@ -108,7 +122,7 @@ Read-only datum (matches result from `datum` or `compose`).
 ```ts
 // Can use as a parameter type for non-mutating functions.
 function Header(title: RODatum<string>) {
-    return compose(({ title }) => `<h1>${title}</h1>`, { title })
+    return compose(title => `<h1>${title}</h1>`, title)
 }
 
 // Also useful for exporting a value from a module.
@@ -132,9 +146,9 @@ The result of `datum`, a reactive value.
 
 ### `Composed<Datums, Result>`
 
-The result of `compose`, a computed value over cursors
+The result of `compose`, a computed value over datums
 
 -   `onChange`: listeners triggered when the result of the computation changes
 -   `val`: the computed value
--   `stopListening`: Destroy this composed datum. Stop listening to the initial cursors.
-    If you try to add a cursor (`.onChange`) after this, it will throw an error.
+-   `unsub`: Destroy this composed datum: stop listening to the initial datums and unsubscribe all listeners on the composition.
+    -   Getting `.val` or adding a listener with `onChange` after a composition has been destroyed will throw an error
